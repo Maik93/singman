@@ -6,14 +6,15 @@ trap 'echo "$0: \"${last_command}\" command failed with exit code $?"' ERR
 
 usage() {
     echo
-    echo "Usage: `basename $0` [-o|--overlay] [-w|--write] [-d|--debug] [--dry-run] [-f|--fakeroot] [-c|--contained] image_name"
+    echo "Usage: `basename $0` [-o|--overlay] [--overlay-sudo] [-w|--write] [-d|--debug] [--dry-run] [-f|--fakeroot] [-c|--contained] image_name"
     echo "The following are mutually exclusive:"
     echo "  o,overlay   load persistant overlay (overlay can be created with scripts/create_overlay.sh)."
-    echo "  w,writable  run it as --writable (works with sandbox containers, image can be converted with scripts/convert_sandbox.sh)."
+    echo " overlay-sudo run persistant overlay as root (i.e. to install new packages). Your home is mounted read-only."
+    echo "  s,sandbox   run a sandbox directory container (images can be converted to directories with scripts/convert_sandbox.sh)."
     echo
     echo "  d,debug     print debug infos while building the actual singularity command."
     echo "    dry-run   print the singularity command instead of running it."
-    echo "  f,fakeroot  be superuser inside the container."
+    echo "  f,fakeroot  be superuser inside the container. Your home is mounted read-only."
     echo "  c,contained isolate from the HOST's home."
     echo "  h,help      help and usage message."
     echo
@@ -25,7 +26,7 @@ usage() {
 ## | ----------------------- script args ---------------------- |
 
 DEBUG=false
-while getopts ":owcdfh-:" arg; do
+while getopts ":oscdfh-:" arg; do
     # support long options: https://stackoverflow.com/a/28466267/519360
     if [ "$arg" = "-" ]; then   # long option: reformulate arg and OPTARG
         arg="${OPTARG%%=*}"       # extract long option name
@@ -34,7 +35,8 @@ while getopts ":owcdfh-:" arg; do
     fi
     case $arg in
     o | overlay)   OVERLAY=true;;
-    w | writable)  WRITABLE=true;;
+    overlay-sudo)  OVERLAY=true; SUDO=true;;
+    s | sandbox)   WRITABLE=true;;
     c | contained) CONTAINED=true;;
     d | debug)     DEBUG=true;;
         dry-run)   DRY_RUN=true;;
@@ -80,7 +82,7 @@ MOUNTS=(
 )
 
 KEEP_ROOT_PRIVS=false # true: let root keep privileges in the container
-DETACH_TMP=true       # true: do NOT mount host's /tmp
+DETACH_TMP=false       # true: do NOT mount host's /tmp
 
 ## | --------------------- arguments setup -------------------- |
 
@@ -93,7 +95,7 @@ if [[ ! -e $CONTAINER_PATH ]]; then
 fi
 
 if ${WRITABLE:-false} && ${OVERLAY:-false}; then
-    echo "Cannot be true both WRITABLE and OVERLAY"
+    echo "Cannot be true both OVERLAY and SANDBOX"
     exit 1
 fi
 
@@ -122,6 +124,9 @@ CONTAINED_ARG=""
 if ${CONTAINED:-false}; then
     CONTAINED_ARG="--home /tmp/singularity/home:/home/$USER"
     $DEBUG && echo "Debug: running as contained"
+elif ${FAKEROOT:-false} || ${SUDO:-false}; then
+    CONTAINED_ARG="--no-home --bind /home/$USER:/home/$USER:ro"
+    $DEBUG && echo "Debug: mounting home read-only"
 fi
 
 KEEP_ROOT_PRIVS_ARG=""
@@ -136,6 +141,12 @@ if ${FAKEROOT:-false}; then
     $DEBUG && echo "Debug: fake root"
 fi
 
+SUDO_ARG=""
+if ${SUDO:-false}; then
+    SUDO_ARG="sudo"
+    $DEBUG && echo "Debug: running with sudo"
+fi
+
 CLEAN_ENV_ARG=""
 if $CLEAN_ENV; then
     CLEAN_ENV_ARG="-e"
@@ -144,9 +155,8 @@ fi
 
 DETACH_TMP_ARG=""
 if $DETACH_TMP; then
-    TMP_PATH="/tmp/singularity/tmp"
+    TMP_PATH=$(mktemp -d)
     DETACH_TMP_ARG="--bind $TMP_PATH:/tmp"
-    [ ! -d /tmp/singularity/tmp ] && mkdir "$TMP_PATH"
     $DEBUG && echo "Debug: detaching tmp from the host"
 fi
 
@@ -166,13 +176,6 @@ if [ "$NVIDIA_COUNT_1" -ge "1" ] || [ "$NVIDIA_COUNT_2" -ge "1" ]; then
         NVIDIA_ARG="--nv"
         $DEBUG && echo "Debug: using nvidia (nvidia counts: $NVIDIA_COUNT_1, $NVIDIA_COUNT_2)"
     fi
-fi
-
-if ${DRY_RUN:-false}; then
-    $DEBUG && echo "Debug: dry run"
-    EXEC_CMD="echo"
-else
-    EXEC_CMD="eval"
 fi
 
 ## | -------------------- set mount points -------------------- |
@@ -206,13 +209,16 @@ if [[ "$ACTION" == "run" ]]; then
     [ ! -z "$@" ] && shift
     CMD="${@}"
     $DEBUG && echo "Debug: ACTION run -> CMD is $CMD"
+
 elif [[ $ACTION == "exec" ]]; then
     shift; shift
     CMD="/bin/bash -c '${@}'"
     $DEBUG && echo "Debug: ACTION exec -> CMD is $CMD"
+
 elif [[ $ACTION == "shell" ]]; then
     CMD=""
     $DEBUG && echo "Debug: ACTION shell"
+
 else
     echo "Action is missing"
     exit 1
@@ -223,7 +229,7 @@ export SINGULARITYENV_DISPLAY=$DISPLAY
 HOSTNAME=${CONTAINER_NAME%.sif} # remove trailing '.sif'
 HOSTNAME=${HOSTNAME//_/-} # substitute all '_' with '-'
 
-$EXEC_CMD singularity $ACTION \
+$DEBUG && echo $SUDO_ARG singularity $ACTION \
     --hostname ${HOSTNAME^^} \
     $NVIDIA_ARG \
     $OVERLAY_ARG \
@@ -236,3 +242,21 @@ $EXEC_CMD singularity $ACTION \
     $DETACH_TMP_ARG \
     $CONTAINER_PATH \
     $CMD
+
+if ${DRY_RUN:-false}; then
+    $DEBUG && echo "Debug: dry run"
+else
+    eval $SUDO_ARG singularity $ACTION \
+        --hostname ${HOSTNAME^^} \
+        $NVIDIA_ARG \
+        $OVERLAY_ARG \
+        $CONTAINED_ARG \
+        $WRITABLE_ARG \
+        $CLEAN_ENV_ARG \
+        $FAKE_ROOT_ARG \
+        $KEEP_ROOT_PRIVS_ARG \
+        $MOUNT_ARG \
+        $DETACH_TMP_ARG \
+        $CONTAINER_PATH \
+        $CMD
+fi

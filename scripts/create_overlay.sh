@@ -2,7 +2,7 @@
 set -e
 
 OVERLAY_NAME="$1.img"
-[[ -z $IMAGE_NAME ]] && echo "Missing required image name." >&2 && exit 1
+[[ -z $OVERLAY_NAME ]] && echo "Missing required overlay_name." >&2 && exit 1
 
 OVERLAY_SIZE=1000 # MB
 

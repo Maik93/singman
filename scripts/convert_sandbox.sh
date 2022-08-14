@@ -23,7 +23,7 @@ while getopts ":rh-:" arg; do
     r | reverse) TO_SANDBOX=false;; # set to false to reverse the direction
     h | help)    echo "Convert a .sif image to a sandbox directory and vice-versa."; usage; exit 0;;
 
-    ??*) echo "Illegal option --$arg" >&2; usage; exit 1;; # bad long option
+    ??*) echo "Illegal option --$arg" >&2; usage; exit 1;;    # bad long option
     \?)  echo "Unknown option: -$OPTARG" >&2; usage; exit 1;; # bad short option
     :)   echo "Missing option argument for -$OPTARG" >&2; usage; exit 1;;
     esac
@@ -43,7 +43,7 @@ IMAGES_PATH=`( cd "$SCRIPT_PATH/../images" && pwd -P )`
 ## | ----------------------- conversion ----------------------- |
 
 if $TO_SANDBOX; then
-    echo "building --sandbox image..."
+    echo "building sandbox image..."
     singularity build --fakeroot --sandbox $IMAGES_PATH/$IMAGE_NAME/ $IMAGES_PATH/$IMAGE_NAME.sif
 else
     echo "Updating $IMAGE_NAME.sif with sandbox image..."
@@ -51,7 +51,7 @@ else
 
     read -p "Remove sandbox directory? (y/N): " choice
     if [ "$choice" = "y" ]; then
-        rm -rf $IMAGES_PATH/$IMAGE_NAME/
+        sudo rm -rf $IMAGES_PATH/$IMAGE_NAME/
         echo "$IMAGES_PATH/$IMAGE_NAME/ sandbox directory removed"
     fi
 fi
