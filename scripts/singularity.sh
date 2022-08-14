@@ -172,7 +172,7 @@ if [[ "$ACTION" == "run" ]]; then
     CMD="$@"
     $DEBUG && echo "Debug: ACTION run -> CMD is $CMD"
 elif [[ $ACTION == "exec" ]]; then
-    shift
+    shift; shift
     CMD="/bin/bash -c '${@}'"
     $DEBUG && echo "Debug: ACTION exec -> CMD is $CMD"
 elif [[ $ACTION == "shell" ]]; then
