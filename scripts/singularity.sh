@@ -75,6 +75,10 @@ fi
 
 WRITABLE_ARG=""
 if $WRITABLE; then
+    if [[ ! -d $CONTAINER_PATH ]]; then
+        echo "$CONTAINER_PATH should be a sandbox directory, image can be converted with scripts/convert_sandbox.sh"
+        exit 1
+    fi
     WRITABLE_ARG="--writable"
     $DEBUG && echo "Debug: running as writable"
 fi
