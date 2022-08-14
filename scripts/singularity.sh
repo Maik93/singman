@@ -4,9 +4,55 @@ set -e
 trap 'last_command=$current_command; current_command=$BASH_COMMAND' DEBUG
 trap 'echo "$0: \"${last_command}\" command failed with exit code $?"' ERR
 
-# use '<file>.sif' for normal container, or use '<folder>' for sandbox container
-CONTAINER_NAME="$1"
+usage() {
+    echo
+    echo "Usage: `basename $0` [-o|--overlay] [-w|--write] [-d|--debug] [--dry-run] [-f|--fakeroot] [-c|--contained] image_name"
+    echo "The following are mutually exclusive:"
+    echo "  o,overlay   load persistant overlay (overlay can be created with scripts/create_overlay.sh)."
+    echo "  w,writable  run it as --writable (works with sandbox containers, image can be converted with scripts/convert_sandbox.sh)."
+    echo
+    echo "  d,debug     print debug infos while building the actual singularity command."
+    echo "    dry-run   print the singularity command instead of running it."
+    echo "  f,fakeroot  be superuser inside the container."
+    echo "  c,contained isolate from the HOST's home."
+    echo "  h,help      help and usage message."
+    echo
+    echo "Positional arguments:"
+    echo "  image_name  use '<file>.sif' for normal container, or use '<folder>' for sandbox container."
+    echo
+}
+
+## | ----------------------- script args ---------------------- |
+
+DEBUG=false
+while getopts ":owcdfh-:" arg; do
+    # support long options: https://stackoverflow.com/a/28466267/519360
+    if [ "$arg" = "-" ]; then   # long option: reformulate arg and OPTARG
+        arg="${OPTARG%%=*}"       # extract long option name
+        OPTARG="${OPTARG#$arg}"   # extract long option argument (may be empty)
+        OPTARG="${OPTARG#=}"      # if long option argument, remove assigning `=`
+    fi
+    case $arg in
+    o | overlay)   OVERLAY=true;;
+    w | writable)  WRITABLE=true;;
+    c | contained) CONTAINED=true;;
+    d | debug)     DEBUG=true;;
+        dry-run)   DRY_RUN=true;;
+    f | fakeroot)  FAKEROOT=true;;
+    h | help)      echo "Singularity main wrapper."; usage; exit 0;;
+
+    ??*) echo "Illegal option --$arg" >&2; usage; exit 1;;    # bad long option
+    \?)  echo "Unknown option: -$OPTARG" >&2; usage; exit 1;; # bad short option
+    :)   echo "Missing option argument for -$OPTARG" >&2; usage; exit 1;;
+    esac
+done
+
+# get positional arguments
+shift $(($OPTIND - 1))
+CONTAINER_NAME=$1
 OVERLAY_NAME="${CONTAINER_NAME%.sif}.img" # remove '.sif' extension and add an '.img' extension
+
+[[ -z $CONTAINER_NAME ]] && echo "Missing required image_name." >&2 && usage && exit 1
 
 if [ $# -eq 1 ]; then
     ACTION="run"
@@ -14,7 +60,7 @@ else
     ACTION=$2
 fi
 
-## | ------------------- configure the paths ------------------ |
+## | -------------------- configure paths --------------------- |
 
 SCRIPT_PATH=`( cd "$(dirname "$0")" && pwd -P )`
 
@@ -22,13 +68,8 @@ IMAGES_PATH=`( cd "$SCRIPT_PATH/../images" && pwd -P )`
 OVERLAYS_PATH=`( cd "$SCRIPT_PATH/../overlays" && pwd -P )`
 # MOUNT_PATH=`( cd "$SCRIPT_PATH/../mount" && pwd -P )`
 
-## | ----------------------- user config ---------------------- |
+## | ------------------ advanced user config ------------------ |
 
-# the following are mutually exclusive
-OVERLAY=false  # true: will load persistant overlay (overlay can be created with scripts/create_overlay.sh)
-WRITABLE=false # true: will run it as --writable (works with --sandbox containers, image can be converted with scripts/convert_sandbox.sh)
-
-CONTAINED=false # true: will isolate from the HOST's home
 CLEAN_ENV=true  # true: will clean the shell environment before runnning container
 
 # define what should be mounted from the host to the container
@@ -38,13 +79,7 @@ MOUNTS=(
     # "type=bind" "$MOUNT_PATH" "/host"
 )
 
-## | ------------------ advanced user config ------------------ |
-
-# not supposed to be changed by a normal user
-DEBUG=true            # true: print debug infos while building the actual singularity command
-DRY_RUN=false         # true: print the singularity command instead of running it
 KEEP_ROOT_PRIVS=false # true: let root keep privileges in the container
-FAKEROOT=false        # true: be superuser inside the container
 DETACH_TMP=true       # true: do NOT mount host's /tmp
 
 ## | --------------------- arguments setup -------------------- |
@@ -57,13 +92,13 @@ if [[ ! -e $CONTAINER_PATH ]]; then
     exit 1
 fi
 
-if $WRITABLE && $OVERLAY; then
+if ${WRITABLE:-false} && ${OVERLAY:-false}; then
     echo "Cannot be true both WRITABLE and OVERLAY"
     exit 1
 fi
 
 OVERLAY_ARG=""
-if $OVERLAY; then
+if ${OVERLAY:-false}; then
     if [ ! -f $OVERLAYS_PATH/$OVERLAY_NAME ]; then
         echo "Overlay file does not exist, initialize it with the 'create_overlay.sh' script"
         exit 1
@@ -74,7 +109,7 @@ if $OVERLAY; then
 fi
 
 WRITABLE_ARG=""
-if $WRITABLE; then
+if ${WRITABLE:-false}; then
     if [[ ! -d $CONTAINER_PATH ]]; then
         echo "$CONTAINER_PATH should be a sandbox directory, image can be converted with scripts/convert_sandbox.sh"
         exit 1
@@ -84,7 +119,7 @@ if $WRITABLE; then
 fi
 
 CONTAINED_ARG=""
-if $CONTAINED; then
+if ${CONTAINED:-false}; then
     CONTAINED_ARG="--home /tmp/singularity/home:/home/$USER"
     $DEBUG && echo "Debug: running as contained"
 fi
@@ -96,7 +131,7 @@ if $KEEP_ROOT_PRIVS; then
 fi
 
 FAKE_ROOT_ARG=""
-if $FAKEROOT; then
+if ${FAKEROOT:-false}; then
     FAKE_ROOT_ARG="--fakeroot"
     $DEBUG && echo "Debug: fake root"
 fi
@@ -107,13 +142,12 @@ if $CLEAN_ENV; then
     $DEBUG && echo "Debug: clean env"
 fi
 
+DETACH_TMP_ARG=""
 if $DETACH_TMP; then
     TMP_PATH="/tmp/singularity/tmp"
     DETACH_TMP_ARG="--bind $TMP_PATH:/tmp"
     [ ! -d /tmp/singularity/tmp ] && mkdir "$TMP_PATH"
     $DEBUG && echo "Debug: detaching tmp from the host"
-else
-    DETACH_TMP_ARG=""
 fi
 
 # there are multiple ways of detecting that you are running nvidia GPUs:
@@ -134,7 +168,8 @@ if [ "$NVIDIA_COUNT_1" -ge "1" ] || [ "$NVIDIA_COUNT_2" -ge "1" ]; then
     fi
 fi
 
-if $DRY_RUN; then
+if ${DRY_RUN:-false}; then
+    $DEBUG && echo "Debug: dry run"
     EXEC_CMD="echo"
 else
     EXEC_CMD="eval"
@@ -143,7 +178,7 @@ fi
 ## | -------------------- set mount points -------------------- |
 
 MOUNT_ARG=""
-if ! $WRITABLE; then
+if ! ${WRITABLE:-false}; then
     # prepare the mounting points, resolve the full paths
     for ((i=0; i < ${#MOUNTS[*]}; i++)); do
         ((i%3==0)) && TYPE[$i/3]="${MOUNTS[$i]}"
@@ -169,7 +204,7 @@ fi
 
 if [[ "$ACTION" == "run" ]]; then
     [ ! -z "$@" ] && shift
-    CMD="$@"
+    CMD="${@}"
     $DEBUG && echo "Debug: ACTION run -> CMD is $CMD"
 elif [[ $ACTION == "exec" ]]; then
     shift; shift
@@ -185,7 +220,11 @@ fi
 
 export SINGULARITYENV_DISPLAY=$DISPLAY
 
+HOSTNAME=${CONTAINER_NAME%.sif} # remove trailing '.sif'
+HOSTNAME=${HOSTNAME//_/-} # substitute all '_' with '-'
+
 $EXEC_CMD singularity $ACTION \
+    --hostname ${HOSTNAME^^} \
     $NVIDIA_ARG \
     $OVERLAY_ARG \
     $CONTAINED_ARG \
