@@ -8,15 +8,16 @@ usage() {
     echo
     echo "Usage: `basename $0` [-o|--overlay] [--overlay-sudo] [-w|--write] [-d|--debug] [--dry-run] [-f|--fakeroot] [-c|--contained] image_name"
     echo "The following are mutually exclusive:"
-    echo "  o,overlay   load persistant overlay (overlay can be created with scripts/create_overlay.sh)."
-    echo " overlay-sudo run persistant overlay as root (i.e. to install new packages). Your home is mounted read-only."
-    echo "  s,sandbox   run a sandbox directory container (images can be converted to directories with scripts/convert_sandbox.sh)."
+    echo "  o,overlay    load persistant overlay (overlay can be created with scripts/create_overlay.sh)."
+    echo " overlay-sudo  run persistant overlay as root (i.e. to install new packages). Your home is mounted read-only."
+    echo "  s,sandbox    run a sandbox directory container (images can be converted to directories with scripts/convert_sandbox.sh)."
     echo
-    echo "  d,debug     print debug infos while building the actual singularity command."
-    echo "    dry-run   print the singularity command instead of running it."
-    echo "  f,fakeroot  be superuser inside the container. Your home is mounted read-only."
-    echo "  c,contained isolate from the HOST's home."
-    echo "  h,help      help and usage message."
+    echo "  d,debug      print debug infos while building the actual singularity command."
+    echo "    dry-run    print the singularity command instead of running it."
+    echo "  f,fakeroot   be superuser inside the container. Your home is mounted read-only."
+    echo "  c,contained  isolate from the HOST's home."
+    echo "  d,detach-tmp do NOT mount host's /tmp."
+    echo "  h,help       help and usage message."
     echo
     echo "Positional arguments:"
     echo "  image_name  use '<file>.sif' for normal container, or use '<folder>' for sandbox container."
@@ -26,7 +27,7 @@ usage() {
 ## | ----------------------- script args ---------------------- |
 
 DEBUG=false
-while getopts ":oscdfh-:" arg; do
+while getopts ":osctdfh-:" arg; do
     # support long options: https://stackoverflow.com/a/28466267/519360
     if [ "$arg" = "-" ]; then   # long option: reformulate arg and OPTARG
         arg="${OPTARG%%=*}"       # extract long option name
@@ -34,14 +35,15 @@ while getopts ":oscdfh-:" arg; do
         OPTARG="${OPTARG#=}"      # if long option argument, remove assigning `=`
     fi
     case $arg in
-    o | overlay)   OVERLAY=true;;
-    overlay-sudo)  OVERLAY=true; SUDO=true;;
-    s | sandbox)   WRITABLE=true;;
-    c | contained) CONTAINED=true;;
-    d | debug)     DEBUG=true;;
-        dry-run)   DRY_RUN=true;;
-    f | fakeroot)  FAKEROOT=true;;
-    h | help)      echo "Singularity main wrapper."; usage; exit 0;;
+    o | overlay)    OVERLAY=true;;
+    overlay-sudo)   OVERLAY=true; SUDO=true;;# KEEP_ROOT_PRIVS=true;;
+    s | sandbox)    WRITABLE=true;;
+    c | contained)  CONTAINED=true;;
+    t | detach-tmp) DETACH_TMP=true;;
+    d | debug)      DEBUG=true;;
+        dry-run)    DRY_RUN=true;;
+    f | fakeroot)   FAKEROOT=true;;
+    h | help)       echo "Singularity main wrapper."; usage; exit 0;;
 
     ??*) echo "Illegal option --$arg" >&2; usage; exit 1;;    # bad long option
     \?)  echo "Unknown option: -$OPTARG" >&2; usage; exit 1;; # bad short option
@@ -80,9 +82,6 @@ MOUNTS=(
     # mount local directory inside the container
     # "type=bind" "$MOUNT_PATH" "/host"
 )
-
-KEEP_ROOT_PRIVS=false # true: let root keep privileges in the container
-DETACH_TMP=false       # true: do NOT mount host's /tmp
 
 ## | --------------------- arguments setup -------------------- |
 
@@ -124,13 +123,14 @@ CONTAINED_ARG=""
 if ${CONTAINED:-false}; then
     CONTAINED_ARG="--home /tmp/singularity/home:/home/$USER"
     $DEBUG && echo "Debug: running as contained"
+
 elif ${FAKEROOT:-false} || ${SUDO:-false}; then
-    CONTAINED_ARG="--no-home --bind /home/$USER:/home/$USER:ro"
+    CONTAINED_ARG="--no-home --bind /home/$USER:/root:ro"
     $DEBUG && echo "Debug: mounting home read-only"
 fi
 
 KEEP_ROOT_PRIVS_ARG=""
-if $KEEP_ROOT_PRIVS; then
+if ${KEEP_ROOT_PRIVS:-false}; then
     KEEP_ROOT_PRIVS_ARG="--keep-privs"
     $DEBUG && echo "Debug: keep root privs"
 fi
@@ -154,7 +154,7 @@ if $CLEAN_ENV; then
 fi
 
 DETACH_TMP_ARG=""
-if $DETACH_TMP; then
+if ${DETACH_TMP:-false}; then
     TMP_PATH=$(mktemp -d)
     DETACH_TMP_ARG="--bind $TMP_PATH:/tmp"
     $DEBUG && echo "Debug: detaching tmp from the host"
