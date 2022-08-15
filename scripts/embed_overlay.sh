@@ -24,7 +24,7 @@ fi
 singularity sif add --datatype 4 --partfs 2 --parttype 4 --partarch 2 --groupid 1 \
     $REPO_PATH/images/$IMAGE_NAME.sif $REPO_PATH/overlays/$IMAGE_NAME.img
 
-read -p "Remove $IMAGE_NAME.img? (y/N): " choice
-if [ "$choice" = "y" ]; then
+read -p "Remove $IMAGE_NAME.img? (Y/n): " choice
+if [ "$choice" != "n" ]; then
     rm $REPO_PATH/overlays/$IMAGE_NAME.img
 fi

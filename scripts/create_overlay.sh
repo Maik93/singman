@@ -4,7 +4,7 @@ set -e
 OVERLAY_NAME="$1.img"
 [[ -z $OVERLAY_NAME ]] && echo "Missing required overlay_name." >&2 && exit 1
 
-OVERLAY_SIZE=1000 # MB
+OVERLAY_SIZE=2048 # MB
 
 ## | -------------------------- paths ------------------------- |
 

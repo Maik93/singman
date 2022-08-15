@@ -6,7 +6,7 @@ trap 'echo "$0: \"${last_command}\" command failed with exit code $?"' ERR
 
 usage() {
     echo
-    echo "Usage: `basename $0` [-o|--overlay] [--overlay-sudo] [-w|--write] [-d|--debug] [--dry-run] [-f|--fakeroot] [-c|--contained] image_name"
+    echo "Usage: `basename $0` [-o|--overlay] [--overlay-sudo] [-w|--write] [-d|--debug] [--dry-run] [-f|--fakeroot] [-c|--contained] image_name [run|exec|shell|pycharm|clion]"
     echo "The following are mutually exclusive:"
     echo "  o,overlay    load persistant overlay (overlay can be created with scripts/create_overlay.sh)."
     echo " overlay-sudo  run persistant overlay as root (i.e. to install new packages). Your home is mounted read-only."
@@ -21,6 +21,7 @@ usage() {
     echo
     echo "Positional arguments:"
     echo "  image_name  use '<file>.sif' for normal container, or use '<folder>' for sandbox container."
+    echo "  command     something from run|exec|shell|pycharm|clion"
     echo
 }
 
@@ -54,7 +55,8 @@ done
 # get positional arguments
 shift $(($OPTIND - 1))
 CONTAINER_NAME=$1
-OVERLAY_NAME="${CONTAINER_NAME%.sif}.img" # remove '.sif' extension and add an '.img' extension
+BASE_NAME=${CONTAINER_NAME%.sif}
+OVERLAY_NAME="$BASE_NAME.img" # remove '.sif' extension and add an '.img' extension
 
 [[ -z $CONTAINER_NAME ]] && echo "Missing required image_name." >&2 && usage && exit 1
 
@@ -66,11 +68,17 @@ fi
 
 ## | -------------------- configure paths --------------------- |
 
-SCRIPT_PATH=`( cd "$(dirname "$0")" && pwd -P )`
+THIS_SCRIPT_PATH=`( cd "$(dirname $(readlink -f "$0"))" && pwd -P )`
 
-IMAGES_PATH=`( cd "$SCRIPT_PATH/../images" && pwd -P )`
-OVERLAYS_PATH=`( cd "$SCRIPT_PATH/../overlays" && pwd -P )`
-# MOUNT_PATH=`( cd "$SCRIPT_PATH/../mount" && pwd -P )`
+IMAGES_PATH=`( cd "$THIS_SCRIPT_PATH/images" && pwd -P )`
+OVERLAYS_PATH=`( cd "$THIS_SCRIPT_PATH/overlays" && pwd -P )`
+SCRIPTS_PATH=`( cd "$THIS_SCRIPT_PATH/scripts" && pwd -P )`
+ARTIFACTS_PATH=`( cd "$THIS_SCRIPT_PATH/artifacts" && pwd -P )`
+# MOUNT_PATH=`( cd "$THIS_SCRIPT_PATH/mount" && pwd -P )`
+
+ROS_SOURCE="source $ARTIFACTS_PATH/$BASE_NAME.rosrc > /dev/null 2>&1"
+PYCHARM_SH="~/.local/share/JetBrains/Toolbox/apps/PyCharm-P/ch-0/213.6777.50/bin/pycharm.sh"
+CLION_SH="~/.local/share/JetBrains/Toolbox/apps/CLion/ch-0/213.6777.58/bin/clion.sh"
 
 ## | ------------------ advanced user config ------------------ |
 
@@ -100,13 +108,19 @@ fi
 
 OVERLAY_ARG=""
 if ${OVERLAY:-false}; then
-    if [ ! -f $OVERLAYS_PATH/$OVERLAY_NAME ]; then
-        echo "Overlay file does not exist, initialize it with the 'create_overlay.sh' script"
-        exit 1
+    if [[ ! -f $OVERLAYS_PATH/$OVERLAY_NAME ]]; then
+        read -p "Overlay file does not exist, but needed. Initialize it with the 'create_overlay.sh' script? (y/N): " choice
+        if [ "$choice" = "y" ]; then
+            $SCRIPTS_PATH/create_overlay.sh $BASE_NAME
+        else
+            exit 1
+        fi
     fi
 
     OVERLAY_ARG="-o $OVERLAYS_PATH/$OVERLAY_NAME"
     $DEBUG && echo "Debug: using overlay"
+else
+    [[ -f $OVERLAYS_PATH/$OVERLAY_NAME ]] && ! ${WRITABLE:-false} && echo "WARN: overlay file detected but not used"
 fi
 
 WRITABLE_ARG=""
@@ -219,6 +233,24 @@ elif [[ $ACTION == "shell" ]]; then
     CMD=""
     $DEBUG && echo "Debug: ACTION shell"
 
+elif [[ $ACTION == "pycharm" ]]; then
+    if ${CONTAINED:-false}; then
+        echo "cannot run pycharm if your home is not mounted (contained parameter is set)"
+    fi
+
+    ACTION=exec
+    CMD=$(printf "/bin/zsh -c \'%s; %s > /dev/null 2>&1 &\'" "$ROS_SOURCE" "$PYCHARM_SH")
+    $DEBUG && echo "Debug: ACTION pycharm"
+
+elif [[ $ACTION == "clion" ]]; then
+    if ${CONTAINED:-false}; then
+        echo "cannot run clion if your home is not mounted (contained parameter is set)"
+    fi
+
+    ACTION=exec
+    CMD=$(printf "/bin/zsh -c \'%s; %s > /dev/null 2>&1 &\'" "$ROS_SOURCE" "$CLION_SH")
+    $DEBUG && echo "Debug: ACTION clion"
+
 else
     echo "Action is missing"
     exit 1
@@ -226,11 +258,9 @@ fi
 
 export SINGULARITYENV_DISPLAY=$DISPLAY
 
-HOSTNAME=${CONTAINER_NAME%.sif} # remove trailing '.sif'
-HOSTNAME=${HOSTNAME//_/-} # substitute all '_' with '-'
+HOSTNAME=${BASE_NAME//_/-} # substitute all '_' with '-'
 
 $DEBUG && echo $SUDO_ARG singularity $ACTION \
-    --hostname ${HOSTNAME^^} \
     $NVIDIA_ARG \
     $OVERLAY_ARG \
     $CONTAINED_ARG \
@@ -242,12 +272,12 @@ $DEBUG && echo $SUDO_ARG singularity $ACTION \
     $DETACH_TMP_ARG \
     $CONTAINER_PATH \
     $CMD
+    # --hostname ${HOSTNAME^^} \
 
 if ${DRY_RUN:-false}; then
     $DEBUG && echo "Debug: dry run"
 else
     eval $SUDO_ARG singularity $ACTION \
-        --hostname ${HOSTNAME^^} \
         $NVIDIA_ARG \
         $OVERLAY_ARG \
         $CONTAINED_ARG \
@@ -259,4 +289,12 @@ else
         $DETACH_TMP_ARG \
         $CONTAINER_PATH \
         $CMD
+        # --hostname ${HOSTNAME^^} \
+fi
+
+if ${OVERLAY:-false}; then
+    read -p "Embed the overlay file? (Y/n): " choice
+    if [ "$choice" != "n" ]; then
+        $SCRIPTS_PATH/embed_overlay.sh $BASE_NAME
+    fi
 fi
