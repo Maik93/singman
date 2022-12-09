@@ -1,0 +1,18 @@
+source /opt/ros/noetic/setup.zsh
+
+base_dir="$HOME/sources/ros_workspaces/lattedrone_singularity"
+current_ros_ws="$base_dir/lattedrone"
+
+source "$base_dir/deps/devel/setup.zsh"
+source "$base_dir/lattedrone/devel/setup.zsh" --extend
+source "$base_dir/sim_deps/devel/setup.zsh" --extend
+source "$base_dir/sim/devel/setup.zsh" --extend
+
+PX4_dir="$base_dir/sim_deps/src/PX4-Autopilot"
+source $PX4_dir/Tools/setup_gazebo.bash $PX4_dir $PX4_dir/build/px4_sitl_default >/dev/null
+export ROS_PACKAGE_PATH=$ROS_PACKAGE_PATH:$PX4_dir:$PX4_dir/Tools/sitl_gazebo
+
+# ROS_IP=localhost
+# ROS_MASTER_URI=http://localhost:11311
+
+# vim: syntax=bash

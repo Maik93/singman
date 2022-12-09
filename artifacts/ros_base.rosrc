@@ -1,0 +1,7 @@
+source /opt/ros/noetic/setup.zsh
+
+base_dir="$HOME/sources/ros_workspaces/test_ws"
+
+source "$base_dir/devel/setup.zsh"
+
+# vim: syntax=bash
