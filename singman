@@ -4,6 +4,9 @@ set -e
 trap 'last_command=$current_command; current_command=$BASH_COMMAND' DEBUG
 trap 'echo "$0: \"${last_command}\" command failed with exit code $?"' ERR
 
+PYCHARM_SH="~/.local/share/JetBrains/Toolbox/apps/PyCharm-P/ch-0/222.4345.23/bin/pycharm.sh"
+CLION_SH="~/.local/share/JetBrains/Toolbox/apps/CLion/ch-0/222.4345.21/bin/clion.sh"
+
 usage() {
     echo
     echo "Usage: `basename $0` [-o|--overlay] [--overlay-sudo] [-w|--write] [-d|--debug] [--dry-run] [-f|--fakeroot] [-c|--contained] image_name [run|exec|shell|pycharm|clion]"
@@ -77,8 +80,6 @@ ARTIFACTS_PATH=`( cd "$THIS_SCRIPT_PATH/artifacts" && pwd -P )`
 # MOUNT_PATH=`( cd "$THIS_SCRIPT_PATH/mount" && pwd -P )`
 
 ROS_SOURCE="source $ARTIFACTS_PATH/$BASE_NAME.rosrc > /dev/null 2>&1"
-PYCHARM_SH="~/.local/share/JetBrains/Toolbox/apps/PyCharm-P/ch-0/213.6777.50/bin/pycharm.sh"
-CLION_SH="~/.local/share/JetBrains/Toolbox/apps/CLion/ch-0/213.6777.58/bin/clion.sh"
 
 ## | ------------------ advanced user config ------------------ |
 
@@ -191,6 +192,7 @@ if [ "$NVIDIA_COUNT_1" -ge "1" ] || [ "$NVIDIA_COUNT_2" -ge "1" ]; then
         $DEBUG && echo "Debug: using nvidia (nvidia counts: $NVIDIA_COUNT_1, $NVIDIA_COUNT_2)"
     fi
 fi
+NVIDIA_ARG=""
 
 ## | -------------------- set mount points -------------------- |
 
