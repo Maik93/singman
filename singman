@@ -221,6 +221,9 @@ fi
 
 ## | --------------------- run singularity -------------------- |
 
+# allow docker and singularity to open X11 windows
+xhost +local:docker > /dev/null
+
 if [[ "$ACTION" == "run" ]]; then
     [ ! -z "$@" ] && shift
     CMD="${@}"

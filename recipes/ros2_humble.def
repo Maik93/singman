@@ -1,0 +1,69 @@
+Bootstrap: docker
+# Bootstrap: docker-daemon
+From: osrf/ros:humble-desktop-full
+
+%post
+    # system update
+    DEBIAN_FRONTEND=noninteractive apt update
+    DEBIAN_FRONTEND=noninteractive apt -yq upgrade
+
+	# base programs
+    DEBIAN_FRONTEND=noninteractive apt -yq --allow-downgrades install \
+        zsh git vim tree tmux ranger \
+		curl wget dialog less rsync gdb \
+        x-window-system mesa-utils \
+        python-is-python3 \
+        python3-pip \
+        python3-osrf-pycommon
+
+    # other useful programs
+    apt-get -y install python3-matplotlib python3-sklearn \
+        tmuxinator \
+        ros-humble-plotjuggler-ros
+
+    # install other required libraries
+    pip3 install numpy toml jinja2 tomli
+
+    # clean apt
+    DEBIAN_FRONTEND=noninteractive apt clean
+    rm -rf /var/lib/apt/lists/*
+
+    # # install zoxide
+    # wget http://archive.ubuntu.com/ubuntu/pool/universe/r/rust-zoxide/zoxide_0.4.3-2_amd64.deb
+    # dpkg -i zoxide_0.4.3-2_amd64.deb
+    # rm zoxide_0.4.3-2_amd64.deb
+
+    # # install visual studio code
+    # # takeon from https://code.visualstudio.com/docs/setup/linux
+    # cd /tmp
+    # wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg
+    # install -o root -g root -m 644 packages.microsoft.gpg /etc/apt/trusted.gpg.d/
+    # sh -c 'echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/trusted.gpg.d/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list'
+    # rm -f packages.microsoft.gpg
+
+    # # install sublimetext
+    # # taken from https://www.sublimetext.com/docs/linux_repositories.html
+    # wget -qO - https://download.sublimetext.com/sublimehq-pub.gpg | apt-key add -
+    # apt-get -y install apt-transport-https
+    # echo "deb https://download.sublimetext.com/ apt/stable/" | tee /etc/apt/sources.list.d/sublime-text.list
+    # apt-get -y update
+    # apt-get -y install sublime-text
+
+    # install pycharm
+    # wget https://download.jetbrains.com/python/pycharm-community-2022.1.3.tar.gz
+    # tar -xvzf pycharm-community-2022.1.3.tar.gz -C /opt/
+
+%environment
+    export LANG=en_US.UTF-8
+	export TERM=xterm-256color
+
+%runscript
+  CMD="${@}"
+
+  if [ -z "${CMD}" ]; then
+    /bin/zsh --login
+  else
+    /bin/zsh --login -c "${CMD}"
+  fi
+
+  exit 0

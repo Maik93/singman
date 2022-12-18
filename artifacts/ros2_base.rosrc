@@ -1,0 +1,22 @@
+source /opt/ros/humble/setup.zsh
+
+base_dir="$HOME/sources/ros_workspaces/ros2_test_ws"
+
+# --- Autocompletion fix ---
+eval "$(register-python-argcomplete3 ros2)"
+eval "$(register-python-argcomplete3 colcon)"
+source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.zsh
+
+# --- Source workspace ---
+source "$base_dir/install/setup.zsh"
+
+# --- Aliases ---
+alias colbuild='colcon build --symlink-install'
+alias r2create='ros2 pkg create'
+alias r2r='ros2 run'
+alias r2n='ros2 node'
+alias r2t='ros2 topic'
+alias r2s='ros2 service'
+alias r2a='ros2 action'
+
+# vim: syntax=bash
