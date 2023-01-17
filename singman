@@ -188,11 +188,11 @@ if [ "$NVIDIA_COUNT_1" -ge "1" ] || [ "$NVIDIA_COUNT_2" -ge "1" ]; then
     if [ "$NVIDIA_NOT_ACTIVE" -ge "1" ]; then
         $DEBUG && echo "Debug: nvidia GPU detected, however, the driver is not active. Starting without using nvidia."
     else
-        NVIDIA_ARG="--nv"
+        NVIDIA_ARG="--nvccli"
         $DEBUG && echo "Debug: using nvidia (nvidia counts: $NVIDIA_COUNT_1, $NVIDIA_COUNT_2)"
     fi
 fi
-NVIDIA_ARG=""
+# NVIDIA_ARG=""
 
 ## | -------------------- set mount points -------------------- |
 
